@@ -1,0 +1,11 @@
+/dist
+/.venv
+*.so
+*.pyd
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+target/
+
+liboo2core*
+oo2core_*.dll

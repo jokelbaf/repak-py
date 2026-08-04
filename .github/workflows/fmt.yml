@@ -1,0 +1,32 @@
+name: Format
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: fmt-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      # ruff doesn't need the Rust extension
+      - run: uv sync --no-install-project
+
+      - run: uv run --no-sync ruff format --check
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - run: cargo fmt --all --check

@@ -1,0 +1,58 @@
+name: Update repak
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve upstream version
+        id: upstream
+        run: |
+          set -euo pipefail
+          latest=$(git ls-remote --tags --refs https://github.com/trumank/repak.git \
+            | sed 's|.*refs/tags/||' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V \
+            | tail -1)
+          current=$(grep -oP '^repak = \{ git = [^}]*tag = "\K[^"]+' Cargo.toml)
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "Upstream latest: $latest, currently pinned: $current"
+
+      - name: Bump repak
+        if: steps.upstream.outputs.latest != steps.upstream.outputs.current
+        env:
+          LATEST: ${{ steps.upstream.outputs.latest }}
+        run: |
+          set -euo pipefail
+          version="${LATEST#v}"
+          sed -i "s|\(^repak = { git = .*tag = \"\)[^\"]*\"|\1${LATEST}\"|" Cargo.toml
+          sed -i "0,/^version = /s|^version = \".*\"|version = \"${version}\"|" Cargo.toml
+          sed -i "0,/^version = /s|^version = \".*\"|version = \"${version}\"|" pyproject.toml
+          cargo metadata --format-version 1 > /dev/null
+
+      - uses: peter-evans/create-pull-request@v8
+        if: steps.upstream.outputs.latest != steps.upstream.outputs.current
+        with:
+          branch: chore/update-repak
+          delete-branch: true
+          title: "feat: update repak to ${{ steps.upstream.outputs.latest }}"
+          commit-message: "feat: update repak to ${{ steps.upstream.outputs.latest }}"
+          body: |
+            Bumps the pinned repak crate from `${{ steps.upstream.outputs.current }}`
+            to [`${{ steps.upstream.outputs.latest }}`](https://github.com/trumank/repak/releases/tag/${{ steps.upstream.outputs.latest }})
+            and matches the package version to it.
+
+            Check the upstream changelog for new `Version` or `Compression`
+            variants, which have to be mirrored in `src/enums.rs` and
+            `python/repak/_repak.pyi` by hand.

@@ -1,0 +1,90 @@
+[project]
+name = "repak"
+version = "0.2.3"
+description = "Python bindings for repak, a library for Unreal Engine .pak files"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "jokelbaf", email = "yarrfd@gmail.com" }]
+keywords = ["unreal-engine", "pak", "unrealpak", "repak", "modding"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Rust",
+    "Topic :: Games/Entertainment",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Repository = "https://github.com/jokelbaf/repak-py"
+Issues = "https://github.com/jokelbaf/repak-py/issues"
+Upstream = "https://github.com/trumank/repak"
+
+[build-system]
+requires = ["maturin>=1.14,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+python-source = "python"
+module-name = "repak._repak"
+features = ["pyo3/extension-module"]
+include = [{ path = "vendor/**/*", format = "sdist" }]
+
+[dependency-groups]
+dev = ["maturin>=1.14,<2.0", "pyright>=1.1.411", "pytest>=9.1", "ruff>=0.16"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.pyright]
+include = ["python", "tests"]
+pythonVersion = "3.10"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "N",
+    "UP",
+    "B",
+    "A",
+    "C4",
+    "PT",
+    "RET",
+    "SIM",
+    "TID",
+    "PTH",
+    "RUF",
+    "D",
+]
+ignore = ["D105", "D107", "D203", "D213", "UP037"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D100", "D103"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["repak"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.format]
+docstring-code-format = true
