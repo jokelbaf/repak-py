@@ -5,15 +5,22 @@ on:
     branches: [master]
   pull_request:
 
+permissions:
+  contents: write
+
 concurrency:
-  group: lint-${{ github.ref }}
-  cancel-in-progress: true
+  group: autofix-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  python:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - uses: Swatinem/rust-cache@v2
 
       - uses: astral-sh/setup-uv@v9.0.0
         with:
@@ -22,13 +29,20 @@ jobs:
       # ruff doesn't need the Rust extension
       - run: uv sync --no-install-project
 
+      - run: uv run --no-sync ruff check --fix
+        continue-on-error: true
+
+      - run: cargo clippy --fix --workspace --all-targets --allow-dirty --allow-staged
+        continue-on-error: true
+
+      - run: uv run --no-sync ruff format
+
+      - run: cargo fmt --all
+
+      - uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "style: apply lint fixes"
+
       - run: uv run --no-sync ruff check
-
-  rust:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: Swatinem/rust-cache@v2
 
       - run: cargo clippy --workspace --all-targets -- -D warnings

@@ -5,15 +5,20 @@ on:
     branches: [master]
   pull_request:
 
+permissions:
+  contents: write
+
 concurrency:
-  group: fmt-${{ github.ref }}
-  cancel-in-progress: true
+  group: autofix-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  python:
+  format:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - uses: astral-sh/setup-uv@v9.0.0
         with:
@@ -22,11 +27,10 @@ jobs:
       # ruff doesn't need the Rust extension
       - run: uv sync --no-install-project
 
-      - run: uv run --no-sync ruff format --check
+      - run: uv run --no-sync ruff format
 
-  rust:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
+      - run: cargo fmt --all
 
-      - run: cargo fmt --all --check
+      - uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "style: apply formatting"
