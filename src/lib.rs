@@ -285,7 +285,7 @@ impl PakReader {
                     }
 
                     let mut writer = std::io::BufWriter::new(std::fs::File::create(dest)?);
-                    
+
                     state
                         .pak
                         .read_file(&path, &mut state.source, &mut writer)
