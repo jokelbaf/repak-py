@@ -18,11 +18,11 @@ base64 = "0.23"
 hex = "0.4"
 oodle_loader = { path = "vendor/oodle_loader" }
 pyo3 = { version = "0.29", features = ["abi3-py310", "extension-module"] }
-repak = { git = "https://github.com/trumank/repak.git", tag = "v0.2.3", features = [
+repak = { git = "https://git.nekolab.app/jokelbaf/repak-sp.git", features = [
     "oodle",
 ] }
 
-[patch."https://github.com/trumank/repak.git"]
+[patch."https://git.nekolab.app/jokelbaf/repak-sp.git"]
 oodle_loader = { path = "vendor/oodle_loader" }
 
 [profile.release]
