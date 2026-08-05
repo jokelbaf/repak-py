@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   release:
@@ -16,3 +17,15 @@ jobs:
           fetch-depth: 0
 
       - uses: seriaati/create-release@main
+
+      - name: Dispatch the publish workflow for a freshly tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(grep ^version pyproject.toml | cut -d '"' -f 2)
+          peeled=$(git ls-remote origin "refs/tags/v$version^{}" | cut -f1)
+          plain=$(git ls-remote origin "refs/tags/v$version" | cut -f1)
+          tag_sha=${peeled:-$plain}
+          if [ "$tag_sha" = "$GITHUB_SHA" ]; then
+            gh workflow run publish.yml --ref "v$version"
+          fi
