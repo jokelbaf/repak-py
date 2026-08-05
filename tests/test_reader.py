@@ -121,6 +121,18 @@ def test_reader_with_version(sample_pak: "pathlib.Path") -> None:
         assert "Readme.txt" in reader
 
 
+def test_reader_accepts_pak_name(sample_pak: "pathlib.Path") -> None:
+    with repak.PakBuilder().reader(sample_pak.read_bytes(), pak_name="sample.pak") as reader:
+        assert "Readme.txt" in reader
+
+
+def test_reader_with_version_accepts_pak_name(sample_pak: "pathlib.Path") -> None:
+    builder = repak.PakBuilder()
+    version = repak.Version.latest()
+    with builder.reader_with_version(sample_pak, version, pak_name="sample.pak") as reader:
+        assert "Readme.txt" in reader
+
+
 def test_read_file_writes_to_disk(
     sample_pak: "pathlib.Path", entries: "dict[str, bytes]", tmp_path: "pathlib.Path"
 ) -> None:

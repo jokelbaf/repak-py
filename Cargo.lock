@@ -483,7 +483,6 @@ dependencies = [
 name = "repak-py"
 version = "0.2.3"
 dependencies = [
- "aes",
  "base64 0.23.1",
  "hex",
  "oodle_loader",

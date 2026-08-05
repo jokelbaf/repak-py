@@ -11,18 +11,17 @@ use source::Source;
 
 type FileWriter = std::io::BufWriter<std::fs::File>;
 
-fn parse_key(value: &Bound<'_, PyAny>) -> PyResult<aes::Aes256> {
-    use aes::cipher::KeyInit;
+fn parse_key(value: &Bound<'_, PyAny>) -> PyResult<[u8; 32]> {
     use base64::Engine as _;
 
     let invalid = || RepakError::new_err("expected a 256 bit AES key as bytes, hex or base64");
 
     if let Ok(bytes) = value.cast::<pyo3::types::PyBytes>() {
-        return aes::Aes256::new_from_slice(bytes.as_bytes()).map_err(|_| invalid());
+        return bytes.as_bytes().try_into().map_err(|_| invalid());
     }
 
     let text: String = value.extract()?;
-    let from_slice = |bytes: Vec<u8>| aes::Aes256::new_from_slice(&bytes).ok();
+    let from_slice = |bytes: Vec<u8>| <[u8; 32]>::try_from(bytes).ok();
     hex::decode(text.strip_prefix("0x").unwrap_or(&text))
         .ok()
         .and_then(from_slice)
@@ -81,34 +80,37 @@ fn entry_key(mount_point: &str, path: &str) -> String {
         .to_owned()
 }
 
-fn open_source(value: &Bound<'_, PyAny>) -> PyResult<Source> {
+fn open_source(value: &Bound<'_, PyAny>) -> PyResult<(Source, Option<String>)> {
     if let Ok(bytes) = value.cast::<pyo3::types::PyBytes>() {
-        return Ok(Source::Memory(std::io::Cursor::new(
-            bytes.as_bytes().to_vec(),
-        )));
+        let source = Source::Memory(std::io::Cursor::new(bytes.as_bytes().to_vec()));
+        return Ok((source, None));
     }
 
     let path: std::path::PathBuf = value.extract()?;
+    let name = path.to_string_lossy().into_owned();
+    let source = Source::File(std::io::BufReader::new(std::fs::File::open(&path)?));
 
-    Ok(Source::File(std::io::BufReader::new(std::fs::File::open(
-        path,
-    )?)))
+    Ok((source, Some(name)))
 }
 
 /// Configure encryption and compression, then open a pak reader or writer.
 #[pyclass(module = "repak", skip_from_py_object)]
 #[derive(Clone, Default)]
 pub struct PakBuilder {
-    key: Option<aes::Aes256>,
+    key: Option<[u8; 32]>,
     compression: Vec<repak::Compression>,
 }
 
 impl PakBuilder {
-    fn build(&self) -> repak::PakBuilder {
+    fn build(&self, pak_name: Option<&str>) -> repak::PakBuilder {
         let mut builder = repak::PakBuilder::new();
 
-        if let Some(key) = &self.key {
-            builder = builder.key(key.clone());
+        if let Some(key) = self.key {
+            builder = builder.key_bytes(key);
+        }
+
+        if let Some(pak_name) = pak_name {
+            builder = builder.pak_name(pak_name);
         }
 
         if !self.compression.is_empty() {
@@ -144,28 +146,36 @@ impl PakBuilder {
         }
 
         Ok(Self {
-            key: self.key.clone(),
+            key: self.key,
             compression,
         })
     }
 
     /// Open a pak from a path or bytes, detecting its version.
-    fn reader(&self, py: Python<'_>, source: &Bound<'_, PyAny>) -> PyResult<PakReader> {
-        let mut source = open_source(source)?;
-        let builder = self.build();
+    #[pyo3(signature = (source, *, pak_name = None))]
+    fn reader(
+        &self,
+        py: Python<'_>,
+        source: &Bound<'_, PyAny>,
+        pak_name: Option<String>,
+    ) -> PyResult<PakReader> {
+        let (mut source, name) = open_source(source)?;
+        let builder = self.build(pak_name.or(name).as_deref());
         let pak = py.detach(|| builder.reader(&mut source).map_err(to_pyerr))?;
         Ok(PakReader::new(pak, source))
     }
 
     /// Open a pak from a path or bytes using an explicit version.
+    #[pyo3(signature = (source, version, *, pak_name = None))]
     fn reader_with_version(
         &self,
         py: Python<'_>,
         source: &Bound<'_, PyAny>,
         version: Version,
+        pak_name: Option<String>,
     ) -> PyResult<PakReader> {
-        let mut source = open_source(source)?;
-        let builder = self.build();
+        let (mut source, name) = open_source(source)?;
+        let builder = self.build(pak_name.or(name).as_deref());
 
         let pak = py.detach(|| {
             builder
@@ -188,7 +198,7 @@ impl PakBuilder {
         let file = std::fs::File::create(path)?;
         let version = version.unwrap_or_else(Version::latest).into();
 
-        Ok(PakWriter::new(self.build().writer(
+        Ok(PakWriter::new(self.build(None).writer(
             std::io::BufWriter::new(file),
             version,
             mount_point,

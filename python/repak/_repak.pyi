@@ -53,10 +53,17 @@ class PakBuilder:
     def compression(self, compression: typing.Sequence[Compression]) -> PakBuilder:
         """Return a builder allowed to use the given compression algorithms when writing."""
 
-    def reader(self, source: _Source) -> PakReader:
-        """Open a pak from a path or bytes, detecting its version."""
+    def reader(self, source: _Source, *, pak_name: str | None = None) -> PakReader:
+        """Open a pak from a path or bytes, detecting its version.
 
-    def reader_with_version(self, source: _Source, version: Version) -> PakReader:
+        Silver Palace paks derive their index key from the pak's file name, which
+        is taken from source when it is a path. Pass pak_name to override it, or
+        to supply one when source is bytes.
+        """
+
+    def reader_with_version(
+        self, source: _Source, version: Version, *, pak_name: str | None = None
+    ) -> PakReader:
         """Open a pak from a path or bytes using an explicit version."""
 
     def writer(
