@@ -79,7 +79,7 @@ class PakReader:
 
     @property
     def mount_point(self) -> str:
-        """Mount point all entry paths are relative to."""
+        """Mount point entry keys are relative to."""
 
     @property
     def encrypted_index(self) -> bool:
@@ -98,7 +98,10 @@ class PakReader:
         """Whether the underlying file has been closed."""
 
     def files(self) -> list[str]:
-        """Return the paths of every entry in the pak."""
+        """Return the path every entry in the pak mounts at."""
+
+    def entries(self) -> list[str]:
+        """Return the keys every entry in the pak is stored under, relative to the mount point."""
 
     def used_compression(self) -> list[Compression]:
         """Return the compression algorithms actually used by entries in the pak."""

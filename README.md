@@ -35,6 +35,17 @@ with repak.PakBuilder().reader("game.pak") as pak:
 
 `PakReader` supports `len()`, `in` and iteration over entry paths. A pak may also be read from memory by passing `bytes` instead of a path.
 
+Entries are stored relative to the pak's mount point, so a pak mounted at `../../../Game/Content/Sub/` holds them under bare names like `Asset.uasset`. `files()` joins the mount point back on and drops the leading `../`, giving the path the entry actually mounts at:
+
+```python
+with repak.PakBuilder().reader("game.pak") as pak:
+    pak.mount_point  # '../../../Game/Content/Sub/'
+    pak.files()  # ['Game/Content/Sub/Asset.uasset', ...]
+    pak.entries()  # ['Asset.uasset', ...]
+```
+
+`get()`, `read_file()` and `in` accept either form. `unpack()` recreates the mounted layout.
+
 ## Writing
 
 ```python

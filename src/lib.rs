@@ -35,6 +35,52 @@ fn parse_key(value: &Bound<'_, PyAny>) -> PyResult<aes::Aes256> {
         .ok_or_else(invalid)
 }
 
+/// Strip the leading `.`, `..` and root components off a mount point.
+fn mount_prefix(mount_point: &str) -> &str {
+    let mut rest = mount_point;
+
+    while let Some(next) = rest
+        .strip_prefix("../")
+        .or_else(|| rest.strip_prefix("..\\"))
+        .or_else(|| rest.strip_prefix("./"))
+        .or_else(|| rest.strip_prefix(".\\"))
+        .or_else(|| rest.strip_prefix('/'))
+        .or_else(|| rest.strip_prefix('\\'))
+    {
+        rest = next;
+    }
+
+    match rest.trim_end_matches(['/', '\\']) {
+        "." | ".." => "",
+        rest => rest,
+    }
+}
+
+/// Join a mount point with an entry path to get the path the entry mounts at.
+fn full_path(mount_point: &str, entry: &str) -> String {
+    match mount_prefix(mount_point) {
+        "" => entry.to_owned(),
+        prefix => format!("{prefix}/{entry}"),
+    }
+}
+
+/// Turn a mounted path back into the key the entry is stored under.
+///
+/// Paths that are already entry keys are returned unchanged, so either form is
+/// accepted wherever an entry is looked up.
+fn entry_key(mount_point: &str, path: &str) -> String {
+    let prefix = mount_prefix(mount_point);
+
+    if prefix.is_empty() {
+        return path.to_owned();
+    }
+
+    path.strip_prefix(prefix)
+        .and_then(|rest| rest.strip_prefix(['/', '\\']))
+        .unwrap_or(path)
+        .to_owned()
+}
+
 fn open_source(value: &Bound<'_, PyAny>) -> PyResult<Source> {
     if let Ok(bytes) = value.cast::<pyo3::types::PyBytes>() {
         return Ok(Source::Memory(std::io::Cursor::new(
@@ -156,6 +202,24 @@ struct ReaderState {
     source: Source,
 }
 
+impl ReaderState {
+    /// Return the path every entry mounts at, in index order.
+    fn full_paths(&self) -> Vec<String> {
+        let mount_point = self.pak.mount_point();
+
+        self.pak
+            .files()
+            .into_iter()
+            .map(|entry| full_path(mount_point, &entry))
+            .collect()
+    }
+
+    /// Resolve a mounted path or entry key to the key the entry is stored under.
+    fn entry_key(&self, path: &str) -> String {
+        entry_key(self.pak.mount_point(), path)
+    }
+}
+
 /// Read entries out of an opened pak file.
 #[pyclass(module = "repak", skip_from_py_object)]
 pub struct PakReader {
@@ -219,8 +283,13 @@ impl PakReader {
             .is_none()
     }
 
-    /// Return the paths of every entry in the pak.
+    /// Return the path every entry in the pak mounts at.
     fn files(&self) -> PyResult<Vec<String>> {
+        self.with_state(|state| Ok(state.full_paths()))
+    }
+
+    /// Return the keys every entry in the pak is stored under, relative to the mount point.
+    fn entries(&self) -> PyResult<Vec<String>> {
         self.with_state(|state| Ok(state.pak.files()))
     }
 
@@ -243,7 +312,20 @@ impl PakReader {
         path: String,
     ) -> PyResult<Bound<'py, pyo3::types::PyBytes>> {
         let data = py.detach(|| {
-            self.with_state(|state| state.pak.get(&path, &mut state.source).map_err(to_pyerr))
+            self.with_state(|state| {
+                let key = state.entry_key(&path);
+
+                match state.pak.get(&key, &mut state.source) {
+                    // A pak whose entries repeat the mount point resolves to a
+                    // key that is not in the index, so fall back to the path as
+                    // it was given. Entries are looked up before anything is
+                    // read, which makes retrying safe.
+                    Err(repak::Error::MissingEntry(_)) if key != path => {
+                        state.pak.get(&path, &mut state.source).map_err(to_pyerr)
+                    }
+                    result => result.map_err(to_pyerr),
+                }
+            })
         })?;
         Ok(pyo3::types::PyBytes::new(py, &data))
     }
@@ -253,10 +335,15 @@ impl PakReader {
         py.detach(|| {
             let mut writer = std::io::BufWriter::new(std::fs::File::create(dest)?);
             self.with_state(|state| {
-                state
-                    .pak
-                    .read_file(&path, &mut state.source, &mut writer)
-                    .map_err(to_pyerr)
+                let key = state.entry_key(&path);
+
+                match state.pak.read_file(&key, &mut state.source, &mut writer) {
+                    Err(repak::Error::MissingEntry(_)) if key != path => state
+                        .pak
+                        .read_file(&path, &mut state.source, &mut writer)
+                        .map_err(to_pyerr),
+                    result => result.map_err(to_pyerr),
+                }
             })?;
             writer.flush()?;
             Ok(())
@@ -267,7 +354,10 @@ impl PakReader {
     fn unpack(&self, py: Python<'_>, directory: std::path::PathBuf) -> PyResult<()> {
         py.detach(|| {
             self.with_state(|state| {
-                for path in state.pak.files() {
+                let mount_point = state.pak.mount_point().to_owned();
+
+                for entry in state.pak.files() {
+                    let path = full_path(&mount_point, &entry);
                     let relative = std::path::Path::new(&path);
                     let contained = relative
                         .components()
@@ -288,7 +378,7 @@ impl PakReader {
 
                     state
                         .pak
-                        .read_file(&path, &mut state.source, &mut writer)
+                        .read_file(&entry, &mut state.source, &mut writer)
                         .map_err(to_pyerr)?;
 
                     writer.flush()?;
@@ -341,7 +431,12 @@ impl PakReader {
     }
 
     fn __contains__(&self, path: String) -> PyResult<bool> {
-        self.with_state(|state| Ok(state.pak.files().contains(&path)))
+        self.with_state(|state| {
+            let key = state.entry_key(&path);
+            let entries = state.pak.files();
+
+            Ok(entries.contains(&key) || (key != path && entries.contains(&path)))
+        })
     }
 
     fn __iter__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyIterator>> {

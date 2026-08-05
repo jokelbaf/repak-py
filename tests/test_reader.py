@@ -18,6 +18,72 @@ def test_get_returns_original_contents(
             assert reader.get(name) == data
 
 
+def test_files_joins_the_mount_point(
+    mounted_pak: "pathlib.Path", entries: "dict[str, bytes]"
+) -> None:
+    with repak.PakBuilder().reader(mounted_pak) as reader:
+        assert sorted(reader.files()) == sorted(f"Game/Content/Sub/{name}" for name in entries)
+
+
+def test_entries_keeps_the_stored_keys(
+    mounted_pak: "pathlib.Path", entries: "dict[str, bytes]"
+) -> None:
+    with repak.PakBuilder().reader(mounted_pak) as reader:
+        assert sorted(reader.entries()) == sorted(entries)
+
+
+def test_get_accepts_either_form(mounted_pak: "pathlib.Path", entries: "dict[str, bytes]") -> None:
+    with repak.PakBuilder().reader(mounted_pak) as reader:
+        for name, data in entries.items():
+            assert reader.get(f"Game/Content/Sub/{name}") == data
+            assert reader.get(name) == data
+
+
+def test_get_reports_a_missing_entry(mounted_pak: "pathlib.Path") -> None:
+    with (
+        repak.PakBuilder().reader(mounted_pak) as reader,
+        pytest.raises(repak.MissingEntryError),
+    ):
+        reader.get("Game/Content/Sub/Absent.txt")
+
+
+def test_read_file_accepts_either_form(
+    mounted_pak: "pathlib.Path", entries: "dict[str, bytes]", tmp_path: "pathlib.Path"
+) -> None:
+    with repak.PakBuilder().reader(mounted_pak) as reader:
+        reader.read_file("Game/Content/Sub/Readme.txt", tmp_path / "full.txt")
+        reader.read_file("Readme.txt", tmp_path / "key.txt")
+
+    assert (tmp_path / "full.txt").read_bytes() == entries["Readme.txt"]
+    assert (tmp_path / "key.txt").read_bytes() == entries["Readme.txt"]
+
+
+def test_mounted_container_protocol(
+    mounted_pak: "pathlib.Path", entries: "dict[str, bytes]"
+) -> None:
+    with repak.PakBuilder().reader(mounted_pak) as reader:
+        assert len(reader) == len(entries)
+        assert "Game/Content/Sub/Readme.txt" in reader
+        assert "Readme.txt" in reader
+        assert "Game/Content/Sub/Absent.txt" not in reader
+        assert sorted(reader) == sorted(f"Game/Content/Sub/{name}" for name in entries)
+
+
+def test_unpack_recreates_the_mounted_layout(
+    mounted_pak: "pathlib.Path", entries: "dict[str, bytes]", tmp_path: "pathlib.Path"
+) -> None:
+    out = tmp_path / "out"
+    with repak.PakBuilder().reader(mounted_pak) as reader:
+        reader.unpack(out)
+
+    written = {
+        path.relative_to(out).as_posix(): path.read_bytes()
+        for path in out.rglob("*")
+        if path.is_file()
+    }
+    assert written == {f"Game/Content/Sub/{name}": data for name, data in entries.items()}
+
+
 def test_metadata(sample_pak: "pathlib.Path") -> None:
     with repak.PakBuilder().reader(sample_pak) as reader:
         assert reader.version == repak.Version.latest()

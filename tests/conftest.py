@@ -19,12 +19,31 @@ def entries() -> "dict[str, bytes]":
     return dict(ENTRIES)
 
 
+MOUNT_POINT = "../../../Game/Content/Sub/"
+
+
 @pytest.fixture
 def sample_pak(tmp_path: "pathlib.Path", entries: "dict[str, bytes]") -> "pathlib.Path":
     """Return the path of a zlib compressed pak holding the sample entries."""
     path = tmp_path / "sample.pak"
     builder = repak.PakBuilder().compression([repak.Compression.ZLIB])
     with builder.writer(path) as writer:
+        for name, data in entries.items():
+            writer.write_file(name, data)
+    return path
+
+
+@pytest.fixture
+def mount_point() -> str:
+    """Return the mount point of the deeply mounted sample pak."""
+    return MOUNT_POINT
+
+
+@pytest.fixture
+def mounted_pak(tmp_path: "pathlib.Path", entries: "dict[str, bytes]") -> "pathlib.Path":
+    """Return the path of a pak mounted below the usual `../../../`."""
+    path = tmp_path / "mounted.pak"
+    with repak.PakBuilder().writer(path, mount_point=MOUNT_POINT) as writer:
         for name, data in entries.items():
             writer.write_file(name, data)
     return path
