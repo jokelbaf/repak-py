@@ -125,7 +125,7 @@ wheels = [
 
 [[package]]
 name = "repak"
-version = "0.2.3"
+version = "0.2.3.post1"
 source = { editable = "." }
 
 [package.dev-dependencies]

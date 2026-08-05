@@ -1,6 +1,6 @@
 [project]
 name = "repak"
-version = "0.2.3"
+version = "0.2.3.post1"
 description = "Python bindings for repak, a library for Unreal Engine .pak files"
 readme = "README.md"
 requires-python = ">=3.10"
